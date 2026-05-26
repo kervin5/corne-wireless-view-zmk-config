@@ -98,7 +98,7 @@ jobs:
         run: |
           west init -l zmk/app
           cd zmk
-          west update --only zephyr lvhal_stm32 hal_stm32 lvgl zmk-studio-messages
+          west update
 
       - name: Verify LVGL module exists
         run: |
