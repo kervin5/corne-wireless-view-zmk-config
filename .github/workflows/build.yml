@@ -101,34 +101,6 @@ jobs:
           west update
           west zephyr-export
 
-      - name: Patch LVGL for native portrait mode
-        run: |
-          ZMK_DIR="${{ runner.temp }}/zmk-workspace/zmk"
-          
-          if [ ! -f "$ZMK_DIR/zephyr/modules/lvgl/lvgl.c" ]; then
-            echo "ERROR: $ZMK_DIR/zephyr/modules/lvgl/lvgl.c not found"
-            exit 1
-          fi
-          
-          # Check if already patched
-          if grep -q "CONFIG_NICE_OLED_NATIVE_PORTRAIT" "$ZMK_DIR/zephyr/modules/lvgl/lvgl.c"; then
-            echo "Already patched, skipping."
-            exit 0
-          fi
-          
-          echo "Patching $ZMK_DIR/zephyr/modules/lvgl/lvgl.c for native portrait mode..."
-          
-          # Create backup
-          cp "$ZMK_DIR/zephyr/modules/lvgl/lvgl.c" "${ZMK_DIR}/zephyr/modules/lvgl/lvgl.c.bak"
-          
-          # Apply patch using sed - replace the hor_res/ver_res assignment block
-          sed -i '/disp_driver->hor_res = data->cap.x_resolution;/,/disp_driver->ver_res = data->cap.y_resolution;/{
-            s/disp_driver->hor_res = data->cap.x_resolution;/\#if IS_ENABLED(CONFIG_NICE_OLED_NATIVE_PORTRAIT)\n\t\tdisp_driver->hor_res = data->cap.y_resolution;\n\t\tdisp_driver->ver_res = data->cap.x_resolution;\n\t#else\n\t\tdisp_driver->hor_res = data->cap.x_resolution;/
-            s/disp_driver->ver_res = data->cap.y_resolution;/\t\tdisp_driver->ver_res = data->cap.y_resolution;\n\t#endif/
-          }' "$ZMK_DIR/zephyr/modules/lvgl/lvgl.c"
-          
-          echo "Patch applied successfully."
-
       - name: Build firmware
         working-directory: ${{ env.base_dir }}
         run: |
