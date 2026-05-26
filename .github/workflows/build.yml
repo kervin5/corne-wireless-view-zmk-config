@@ -104,11 +104,25 @@ jobs:
       - name: Patch LVGL for native portrait mode
         run: |
           ZMK_DIR="${{ runner.temp }}/zmk-workspace/zmk"
-          LVGL_C="$ZMK_DIR/zephyr/modules/lvgl/lvgl.c"
           
-          if [ ! -f "$LVGL_C" ]; then
-            echo "ERROR: $LVGL_C not found"
-            exit 1
+          # Find lvgl.c in either v3.5 or v4.x structure
+          if [ -f "$ZMK_DIR/zephyr/modules/lvgl/lvgl.c" ]; then
+            LVGL_C="$ZMK_DIR/zephyr/modules/lvgl/lvgl.c"
+          elif [ -f "$ZMK_DIR/modules/lib/gui/lvgl/src/hal/lv_hal_disp.c" ]; then
+            # v4.x structure - patch the Zephyr binding instead
+            if [ -f "$ZMK_DIR/zephyr/modules/lvgl/lvgl.c" ]; then
+              LVGL_C="$ZMK_DIR/zephyr/modules/lvgl/lvgl.c"
+            else
+              echo "ERROR: Could not find lvgl.c in expected locations"
+              exit 1
+            fi
+          else
+            # Search for it
+            LVGL_C=$(find "$ZMK_DIR" -name "lvgl.c" -path "*zephyr/modules*" 2>/dev/null | head -1)
+            if [ -z "$LVGL_C" ]; then
+              echo "ERROR: Could not find lvgl.c anywhere in $ZMK_DIR"
+              exit 1
+            fi
           fi
           
           # Check if already patched
