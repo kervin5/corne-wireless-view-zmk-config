@@ -105,23 +105,22 @@ jobs:
         run: |
           ZMK_DIR="${{ runner.temp }}/zmk-workspace/zmk"
           
-          # Find lvgl.c in either v3.5 or v4.x structure
+          # Find lvgl.c - try known paths then search broadly
           if [ -f "$ZMK_DIR/zephyr/modules/lvgl/lvgl.c" ]; then
             LVGL_C="$ZMK_DIR/zephyr/modules/lvgl/lvgl.c"
-          elif [ -f "$ZMK_DIR/modules/lib/gui/lvgl/src/hal/lv_hal_disp.c" ]; then
-            # v4.x structure - patch the Zephyr binding instead
-            if [ -f "$ZMK_DIR/zephyr/modules/lvgl/lvgl.c" ]; then
-              LVGL_C="$ZMK_DIR/zephyr/modules/lvgl/lvgl.c"
-            else
-              echo "ERROR: Could not find lvgl.c in expected locations"
-              exit 1
-            fi
           else
-            # Search for it
-            LVGL_C=$(find "$ZMK_DIR" -name "lvgl.c" -path "*zephyr/modules*" 2>/dev/null | head -1)
+            # Search for any file containing the hor_res assignment pattern
+            LVGL_C=$(find "$ZMK_DIR" -name "*.c" -exec grep -l "disp_driver->hor_res = data->cap.x_resolution" {} /dev/null 2>/dev/null \; | head -1)
             if [ -z "$LVGL_C" ]; then
-              echo "ERROR: Could not find lvgl.c anywhere in $ZMK_DIR"
-              exit 1
+              echo "ERROR: Could not find file with hor_res assignment in $ZMK_DIR"
+              echo "Searching for lvgl.c..."
+              LVGL_C=$(find "$ZMK_DIR" -name "lvgl.c" 2>/dev/null | head -1)
+              if [ -z "$LVGL_C" ]; then
+                echo "ERROR: lvgl.c not found anywhere in $ZMK_DIR"
+                ls -la "$ZMK_DIR/" 2>/dev/null || true
+                find "$ZMK_DIR" -name "*.c" -path "*lvgl*" 2>/dev/null | head -10 || true
+                exit 1
+              fi
             fi
           fi
           
