@@ -2,15 +2,15 @@ manifest:
   remotes:
     - name: zmkfirmware
       url-base: https://github.com/zmkfirmware
-    - name: mctechnology17
-      url-base: https://github.com/mctechnology17
+    - name: kervin5
+      url-base: https://github.com/kervin5
   projects:
     - name: zmk
       remote: zmkfirmware
       revision: v0.3.0
       import: app/west.yml
     - name: zmk-nice-oled
-      remote: mctechnology17
-      revision: 46f824abb2bd41f1287c5c68abd14122af6042a3
+      remote: kervin5
+      revision: peformance
   self:
     path: config
