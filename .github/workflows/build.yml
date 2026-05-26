@@ -76,12 +76,12 @@ jobs:
           cache_name: cache-zephyr-${{ env.zephyr_version }}-modules
         with:
           path: |
-            ${{ env.base_dir }}/modules/
-            ${{ env.base_dir }}/zephyr/modules/
-            ${{ env.base_dir }}/zephyr/samples/
-            ${{ env.base_dir }}/zephyr/lib/
-            ${{ env.base_dir }}/zephyr/tools/
-            ${{ env.base_dir }}/zephyr/dts/
+            ${{ runner.temp }}/zmk-workspace/zmk/modules/
+            ${{ runner.temp }}/zmk-workspace/zmk/zephyr/modules/
+            ${{ runner.temp }}/zmk-workspace/zmk/zephyr/samples/
+            ${{ runner.temp }}/zmk-workspace/zmk/zephyr/lib/
+            ${{ runner.temp }}/zmk-workspace/zmk/zephyr/tools/
+            ${{ runner.temp }}/zmk-workspace/zmk/zephyr/dts/
           key: ${{ runner.os }}-${{ env.cache_name }}-${{ hashFiles('**/west.yml', '**/zephyr/module.yml') }}
           restore-keys: |
             ${{ runner.os }}-${{ env.cache_name }}-
@@ -98,30 +98,30 @@ jobs:
         run: |
           west init -l zmk/app
           cd zmk
-          west update
-          west zephyr-export
+          west update --only zephyr lvhal_stm32 hal_stm32 lvgl zmk-studio-messages
+
+      - name: Verify LVGL module exists
+        run: |
+          ZMK_DIR="${{ runner.temp }}/zmk-workspace/zmk"
+          echo "Checking for lvgl.c..."
+          find "$ZMK_DIR" -name "lvgl.c" 2>/dev/null | head -5 || true
+          ls "$ZMK_DIR/modules/lib/gui/lvgl/" 2>/dev/null || true
+          ls "$ZMK_DIR/zephyr/modules/lvgl/" 2>/dev/null || true
 
       - name: Patch LVGL for native portrait mode
         run: |
           ZMK_DIR="${{ runner.temp }}/zmk-workspace/zmk"
           
-          # Find lvgl.c - try known paths then search broadly
+          # Find lvgl.c in the expected location (ZMK v0.3.0 uses Zephyr 3.5.0)
           if [ -f "$ZMK_DIR/zephyr/modules/lvgl/lvgl.c" ]; then
             LVGL_C="$ZMK_DIR/zephyr/modules/lvgl/lvgl.c"
           else
-            # Search for any file containing the hor_res assignment pattern
-            LVGL_C=$(find "$ZMK_DIR" -name "*.c" -exec grep -l "disp_driver->hor_res = data->cap.x_resolution" {} /dev/null 2>/dev/null \; | head -1)
-            if [ -z "$LVGL_C" ]; then
-              echo "ERROR: Could not find file with hor_res assignment in $ZMK_DIR"
-              echo "Searching for lvgl.c..."
-              LVGL_C=$(find "$ZMK_DIR" -name "lvgl.c" 2>/dev/null | head -1)
-              if [ -z "$LVGL_C" ]; then
-                echo "ERROR: lvgl.c not found anywhere in $ZMK_DIR"
-                ls -la "$ZMK_DIR/" 2>/dev/null || true
-                find "$ZMK_DIR" -name "*.c" -path "*lvgl*" 2>/dev/null | head -10 || true
-                exit 1
-              fi
-            fi
+            echo "ERROR: lvgl.c not found at zephyr/modules/lvgl/lvgl.c"
+            echo "Contents of $ZMK_DIR:"
+            ls "$ZMK_DIR/" 2>/dev/null || true
+            echo "Modules directory:"
+            find "$ZMK_DIR" -type d -name "lvgl" 2>/dev/null | head -5 || true
+            exit 1
           fi
           
           # Check if already patched
