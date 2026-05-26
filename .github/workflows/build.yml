@@ -69,6 +69,23 @@ jobs:
             cp -R config/* "${{ env.base_dir }}/config/"
           fi
 
+      - name: Cache west modules
+        uses: actions/cache@v4
+        continue-on-error: true
+        env:
+          cache_name: cache-zephyr-${{ env.zephyr_version }}-modules
+        with:
+          path: |
+            ${{ env.base_dir }}/modules/
+            ${{ env.base_dir }}/zephyr/modules/
+            ${{ env.base_dir }}/zephyr/samples/
+            ${{ env.base_dir }}/zephyr/lib/
+            ${{ env.base_dir }}/zephyr/tools/
+            ${{ env.base_dir }}/zephyr/dts/
+          key: ${{ runner.os }}-${{ env.cache_name }}-${{ hashFiles('**/west.yml', '**/zephyr/module.yml') }}
+          restore-keys: |
+            ${{ runner.os }}-${{ env.cache_name }}-
+
       - name: Clone ZMK v0.3.0
         run: |
           mkdir -p "$RUNNER_TEMP/zmk-workspace"
@@ -77,64 +94,38 @@ jobs:
             "$RUNNER_TEMP/zmk-workspace/zmk"
 
       - name: Bootstrap west workspace
+        working-directory: ${{ runner.temp }}/zmk-workspace
         run: |
-          set -ex
-          ZMK_DIR="$RUNNER_TEMP/zmk-workspace/zmk"
-          
-          # Remove any pre-existing modules from container image (Zephyr 4.x)
-          rm -rf "$ZMK_DIR/modules" "$ZMK_DIR/zephyr/modules" 2>/dev/null || true
-          
-          cd "$ZMK_DIR"
-          west init -l app
-          west update --force-purge
-
-      - name: Verify LVGL module exists
-        run: |
-          ZMK_DIR="${{ runner.temp }}/zmk-workspace/zmk"
-          echo "=== ZMK_DIR = $ZMK_DIR ==="
-          echo "=== PWD = $(pwd) ==="
-          echo "=== ls $ZMK_DIR ==="
-          ls -la "$ZMK_DIR/" 2>&1 || true
-          echo "=== test -d modules ==="
-          if [ -d "$ZMK_DIR/modules" ]; then echo "modules EXISTS"; else echo "modules MISSING"; fi
-          echo "=== test -d zephyr/modules ==="
-          if [ -d "$ZMK_DIR/zephyr/modules" ]; then echo "zephyr/modules EXISTS"; else echo "zephyr/modules MISSING"; fi
-          echo "=== find lvgl.c ==="
-          find "$ZMK_DIR" -name "lvgl.c" 2>/dev/null | head -5 || true
+          west init -l zmk/app
+          cd zmk
+          west update
+          west zephyr-export
 
       - name: Patch LVGL for native portrait mode
         run: |
-          set -e
           ZMK_DIR="${{ runner.temp }}/zmk-workspace/zmk"
           
-          # Find lvgl.c in the expected location (ZMK v0.3.0 uses Zephyr 3.5.0)
-          if [ -f "$ZMK_DIR/zephyr/modules/lvgl/lvgl.c" ]; then
-            LVGL_C="$ZMK_DIR/zephyr/modules/lvgl/lvgl.c"
-          else
-            echo "ERROR: lvgl.c not found at zephyr/modules/lvgl/lvgl.c"
-            echo "Contents of $ZMK_DIR:"
-            ls "$ZMK_DIR/" 2>/dev/null || true
-            echo "Modules directory:"
-            find "$ZMK_DIR" -type d -name "lvgl" 2>/dev/null | head -5 || true
+          if [ ! -f "$ZMK_DIR/zephyr/modules/lvgl/lvgl.c" ]; then
+            echo "ERROR: $ZMK_DIR/zephyr/modules/lvgl/lvgl.c not found"
             exit 1
           fi
           
           # Check if already patched
-          if grep -q "CONFIG_NICE_OLED_NATIVE_PORTRAIT" "$LVGL_C"; then
+          if grep -q "CONFIG_NICE_OLED_NATIVE_PORTRAIT" "$ZMK_DIR/zephyr/modules/lvgl/lvgl.c"; then
             echo "Already patched, skipping."
             exit 0
           fi
           
-          echo "Patching $LVGL_C for native portrait mode..."
+          echo "Patching $ZMK_DIR/zephyr/modules/lvgl/lvgl.c for native portrait mode..."
           
           # Create backup
-          cp "$LVGL_C" "${LVGL_C}.bak"
+          cp "$ZMK_DIR/zephyr/modules/lvgl/lvgl.c" "${ZMK_DIR}/zephyr/modules/lvgl/lvgl.c.bak"
           
           # Apply patch using sed - replace the hor_res/ver_res assignment block
           sed -i '/disp_driver->hor_res = data->cap.x_resolution;/,/disp_driver->ver_res = data->cap.y_resolution;/{
             s/disp_driver->hor_res = data->cap.x_resolution;/\#if IS_ENABLED(CONFIG_NICE_OLED_NATIVE_PORTRAIT)\n\t\tdisp_driver->hor_res = data->cap.y_resolution;\n\t\tdisp_driver->ver_res = data->cap.x_resolution;\n\t#else\n\t\tdisp_driver->hor_res = data->cap.x_resolution;/
             s/disp_driver->ver_res = data->cap.y_resolution;/\t\tdisp_driver->ver_res = data->cap.y_resolution;\n\t#endif/
-          }' "$LVGL_C"
+          }' "$ZMK_DIR/zephyr/modules/lvgl/lvgl.c"
           
           echo "Patch applied successfully."
 
