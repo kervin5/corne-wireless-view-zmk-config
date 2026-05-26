@@ -96,12 +96,16 @@ jobs:
       - name: Verify LVGL module exists
         run: |
           ZMK_DIR="${{ runner.temp }}/zmk-workspace/zmk"
-          echo "=== Checking for lvgl.c ==="
+          echo "=== ZMK_DIR = $ZMK_DIR ==="
+          echo "=== PWD = $(pwd) ==="
+          echo "=== ls $ZMK_DIR ==="
+          ls -la "$ZMK_DIR/" 2>&1 || true
+          echo "=== test -d modules ==="
+          if [ -d "$ZMK_DIR/modules" ]; then echo "modules EXISTS"; else echo "modules MISSING"; fi
+          echo "=== test -d zephyr/modules ==="
+          if [ -d "$ZMK_DIR/zephyr/modules" ]; then echo "zephyr/modules EXISTS"; else echo "zephyr/modules MISSING"; fi
+          echo "=== find lvgl.c ==="
           find "$ZMK_DIR" -name "lvgl.c" 2>/dev/null | head -5 || true
-          echo "=== Modules structure ==="
-          ls -la "$ZMK_DIR/modules/" 2>/dev/null || echo "No modules dir"
-          ls -la "$ZMK_DIR/zephyr/modules/" 2>/dev/null || echo "No zephyr/modules dir"
-          find "$ZMK_DIR" -type d -name "lvgl" 2>/dev/null | head -5 || true
 
       - name: Patch LVGL for native portrait mode
         run: |
