@@ -77,16 +77,20 @@ jobs:
             "$RUNNER_TEMP/zmk-workspace/zmk"
 
       - name: Bootstrap west workspace
-        working-directory: ${{ runner.temp }}/zmk-workspace
         run: |
-          set -e
-          rm -rf zmk/.west 2>/dev/null || true
-          west init -l zmk/app
-          cd zmk
-          echo "=== Before west update ==="
-          ls -la modules/ 2>/dev/null || echo "No modules dir"
-          ls -la zephyr/modules/ 2>/dev/null || echo "No zephyr/modules dir"
-          west update
+          set -ex
+          ZMK_DIR="$RUNNER_TEMP/zmk-workspace/zmk"
+          rm -rf "$ZMK_DIR/.west" 2>/dev/null || true
+          cd "$ZMK_DIR"
+          echo "=== Current dir ==="
+          pwd
+          ls -la
+          echo "=== west init ==="
+          west init -l app
+          echo "=== After init, before update ==="
+          ls -la .west/ 2>/dev/null || echo "No .west yet"
+          echo "=== Running west update ==="
+          west update 2>&1 || { echo "WEST UPDATE FAILED"; exit 1; }
           echo "=== After west update ==="
 
       - name: Verify LVGL module exists
