@@ -83,15 +83,21 @@ jobs:
           rm -rf zmk/.west 2>/dev/null || true
           west init -l zmk/app
           cd zmk
+          echo "=== Before west update ==="
+          ls -la modules/ 2>/dev/null || echo "No modules dir"
+          ls -la zephyr/modules/ 2>/dev/null || echo "No zephyr/modules dir"
           west update
+          echo "=== After west update ==="
 
       - name: Verify LVGL module exists
         run: |
           ZMK_DIR="${{ runner.temp }}/zmk-workspace/zmk"
-          echo "Checking for lvgl.c..."
+          echo "=== Checking for lvgl.c ==="
           find "$ZMK_DIR" -name "lvgl.c" 2>/dev/null | head -5 || true
-          ls "$ZMK_DIR/modules/lib/gui/lvgl/" 2>/dev/null || true
-          ls "$ZMK_DIR/zephyr/modules/lvgl/" 2>/dev/null || true
+          echo "=== Modules structure ==="
+          ls -la "$ZMK_DIR/modules/" 2>/dev/null || echo "No modules dir"
+          ls -la "$ZMK_DIR/zephyr/modules/" 2>/dev/null || echo "No zephyr/modules dir"
+          find "$ZMK_DIR" -type d -name "lvgl" 2>/dev/null | head -5 || true
 
       - name: Patch LVGL for native portrait mode
         run: |
