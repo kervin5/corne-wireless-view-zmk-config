@@ -69,23 +69,6 @@ jobs:
             cp -R config/* "${{ env.base_dir }}/config/"
           fi
 
-      - name: Cache west modules
-        uses: actions/cache@v4
-        continue-on-error: true
-        env:
-          cache_name: cache-zephyr-${{ env.zephyr_version }}-modules
-        with:
-          path: |
-            ${{ runner.temp }}/zmk-workspace/zmk/modules/
-            ${{ runner.temp }}/zmk-workspace/zmk/zephyr/modules/
-            ${{ runner.temp }}/zmk-workspace/zmk/zephyr/samples/
-            ${{ runner.temp }}/zmk-workspace/zmk/zephyr/lib/
-            ${{ runner.temp }}/zmk-workspace/zmk/zephyr/tools/
-            ${{ runner.temp }}/zmk-workspace/zmk/zephyr/dts/
-          key: ${{ runner.os }}-${{ env.cache_name }}-${{ hashFiles('**/west.yml', '**/zephyr/module.yml') }}
-          restore-keys: |
-            ${{ runner.os }}-${{ env.cache_name }}-
-
       - name: Clone ZMK v0.3.0
         run: |
           mkdir -p "$RUNNER_TEMP/zmk-workspace"
@@ -96,6 +79,8 @@ jobs:
       - name: Bootstrap west workspace
         working-directory: ${{ runner.temp }}/zmk-workspace
         run: |
+          set -e
+          rm -rf zmk/.west 2>/dev/null || true
           west init -l zmk/app
           cd zmk
           west update
@@ -110,6 +95,7 @@ jobs:
 
       - name: Patch LVGL for native portrait mode
         run: |
+          set -e
           ZMK_DIR="${{ runner.temp }}/zmk-workspace/zmk"
           
           # Find lvgl.c in the expected location (ZMK v0.3.0 uses Zephyr 3.5.0)
