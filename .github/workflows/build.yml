@@ -1,5 +1,159 @@
+name: Build Firmware
+
 on: [push, pull_request, workflow_dispatch]
 
 jobs:
+  matrix:
+    runs-on: ubuntu-22.04
+    name: Fetch Build Keyboards
+    outputs:
+      build_matrix: ${{ env.build_matrix }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        
+      - name: Fetch Build Matrix
+        run: |
+          echo "build_matrix=$(yq -oj -I0 'build.yaml')" >> $GITHUB_ENV
+          yq -oj 'build.yaml'
+
   build:
-    uses: zmkfirmware/zmk/.github/workflows/build-user-config.yml@v0.3
+    runs-on: ubuntu-latest
+    container:
+      image: zmkfirmware/zmk-build-arm:stable
+    needs: matrix
+    name: Build
+    strategy:
+      fail-fast: false
+      matrix: ${{ fromJson(needs.matrix.outputs.build_matrix) }}
+    
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        
+      - name: Create build directory
+        run: |
+          echo "build_dir=$(mktemp -d)" >> $GITHUB_ENV
+
+      - name: Prepare variables
+        shell: sh -x {0}
+        env:
+          board: ${{ matrix.board }}
+          shield: ${{ matrix.shield }}
+          artifact_name: ${{ matrix.artifact-name }}
+          snippet: ${{ matrix.snippet }}
+        run: |
+          if [ -e zephyr/module.yml ]; then
+            export zmk_load_arg=" -DZMK_EXTRA_MODULES='${GITHUB_WORKSPACE}'"
+            new_tmp_dir="${TMPDIR:-/tmp}/zmk-config"
+            mkdir -p "${new_tmp_dir}"
+            echo "base_dir=${new_tmp_dir}" >> $GITHUB_ENV
+          else
+            echo "base_dir=${GITHUB_WORKSPACE}" >> $GITHUB_ENV
+          fi
+
+          if [ -n "${snippet}" ]; then
+            extra_west_args="-S \"${snippet}\""
+          fi
+
+          echo "zephyr_version=${ZEPHYR_VERSION}" >> $GITHUB_ENV
+          echo "extra_west_args=${extra_west_args}" >> $GITHUB_ENV
+          echo "extra_cmake_args=${shield:+-DSHIELD=\"$shield\"}${zmk_load_arg}" >> $GITHUB_ENV
+          echo "display_name=${shield:+$shield - }${board}" >> $GITHUB_ENV
+          echo "artifact_name=${artifact_name:-${shield:+$shield-}${board}-zmk}" >> $GITHUB_ENV
+
+      - name: Copy config files to isolated temporary directory
+        run: |
+          if [ "${{ env.base_dir }}" != "${GITHUB_WORKSPACE}" ]; then
+            mkdir "${{ env.base_dir }}/config"
+            cp -R config/* "${{ env.base_dir }}/config/"
+          fi
+
+      - name: Cache west modules
+        uses: actions/cache@v4
+        continue-on-error: true
+        env:
+          cache_name: cache-zephyr-${{ env.zephyr_version }}-modules
+        with:
+          path: |
+            ${{ env.base_dir }}/modules/
+            ${{ env.base_dir }}/zephyr/modules/
+            ${{ env.base_dir }}/zephyr/samples/
+            ${{ env.base_dir }}/zephyr/lib/
+            ${{ env.base_dir }}/zephyr/tools/
+            ${{ env.base_dir }}/zephyr/dts/
+          key: ${{ runner.os }}-${{ env.cache_name }}-${{ hashFiles('**/west.yml', '**/zephyr/module.yml') }}
+          restore-keys: |
+            ${{ runner.os }}-${{ env.cache_name }}-
+
+      - name: Clone ZMK v0.3.0
+        run: |
+          mkdir -p "$RUNNER_TEMP/zmk-workspace"
+          git clone --depth 1 --branch v0.3.0 \
+            https://github.com/zmkfirmware/zmk.git \
+            "$RUNNER_TEMP/zmk-workspace/zmk"
+
+      - name: Bootstrap west workspace
+        working-directory: ${{ runner.temp }}/zmk-workspace
+        run: |
+          west init -l zmk/app
+          cd zmk
+          west update
+          west zephyr-export
+
+      - name: Patch LVGL for native portrait mode
+        run: |
+          ZMK_DIR="${{ runner.temp }}/zmk-workspace/zmk"
+          LVGL_C="$ZMK_DIR/zephyr/modules/lvgl/lvgl.c"
+          
+          if [ ! -f "$LVGL_C" ]; then
+            echo "ERROR: $LVGL_C not found"
+            exit 1
+          fi
+          
+          # Check if already patched
+          if grep -q "CONFIG_NICE_OLED_NATIVE_PORTRAIT" "$LVGL_C"; then
+            echo "Already patched, skipping."
+            exit 0
+          fi
+          
+          echo "Patching $LVGL_C for native portrait mode..."
+          
+          # Create backup
+          cp "$LVGL_C" "${LVGL_C}.bak"
+          
+          # Apply patch using sed - replace the hor_res/ver_res assignment block
+          sed -i '/disp_driver->hor_res = data->cap.x_resolution;/,/disp_driver->ver_res = data->cap.y_resolution;/{
+            s/disp_driver->hor_res = data->cap.x_resolution;/\#if IS_ENABLED(CONFIG_NICE_OLED_NATIVE_PORTRAIT)\n\t\tdisp_driver->hor_res = data->cap.y_resolution;\n\t\tdisp_driver->ver_res = data->cap.x_resolution;\n\t#else\n\t\tdisp_driver->hor_res = data->cap.x_resolution;/
+            s/disp_driver->ver_res = data->cap.y_resolution;/\t\tdisp_driver->ver_res = data->cap.y_resolution;\n\t#endif/
+          }' "$LVGL_C"
+          
+          echo "Patch applied successfully."
+
+      - name: Build firmware
+        working-directory: ${{ env.base_dir }}
+        run: |
+          west build -s "${{ runner.temp }}/zmk-workspace/zmk/app" \
+            -d "${{ env.build_dir }}" \
+            -b "${{ matrix.board }}" -- \
+            -DSHIELD="${{ matrix.shield }}" \
+            -DZMK_CONFIG="${{ github.workspace }}/config" \
+            ${{ matrix.snippet && format('-DSNIPPET="{0}"', matrix.snippet) || '' }} \
+            ${{ env.extra_cmake_args }}
+
+      - name: Create uf2 artifact
+        if: runner.os != 'Windows'
+        run: |
+          cd "${{ env.build_dir }}"
+          for f in build/zephyr/*.uf2; do
+            [ -f "$f" ] || continue
+            cp "$f" "$(basename $f .uf2)-zmk.uf2"
+          done
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ matrix.artifact-name || matrix.shield }}-${{ matrix.board }}-zmk
+          path: |
+            ${{ env.build_dir }}/build/zephyr/*.uf2
+            ${{ env.build_dir }}/build/zephyr/*.bin
