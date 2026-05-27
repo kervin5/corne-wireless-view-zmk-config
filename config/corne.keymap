@@ -22,7 +22,7 @@
                 sft_td: smart_shift_tap_dance {
                         compatible = "zmk,behavior-tap-dance";
                         #binding-cells = <0>;
-                        tapping-term-ms = <200>;
+                        tapping-term-ms = <280>;
                         bindings = <&skq LSHFT>, <&caps_word>;
                 };
 
@@ -30,7 +30,7 @@
                         compatible = "zmk,behavior-hold-tap";
                         #binding-cells = <2>;
                         flavor = "hold-preferred";
-                        tapping-term-ms = <200>;
+                        tapping-term-ms = <280>;
                         bindings = <&kp>, <&sft_td>;
                 };
 
